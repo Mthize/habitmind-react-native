@@ -1,9 +1,9 @@
-import { useAuth, useSignUp } from "@clerk/clerk-expo";
+import { useAuth, useSSO, useSignUp } from "@clerk/clerk-expo";
+import * as AuthSession from "expo-auth-session";
 import { Link, type Href, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,6 +14,29 @@ import {
   TextInput,
   View,
 } from "react-native";
+import * as WebBrowser from "expo-web-browser";
+
+import AuthButton from "@/components/ui/AuthButton";
+import DividerWithText from "@/components/ui/DividerWithText";
+import { ONBOARDING } from "@/constants/routes";
+
+WebBrowser.maybeCompleteAuthSession();
+
+function useWarmUpBrowser() {
+  useEffect(() => {
+    if (Platform.OS !== "android") {
+      return;
+    }
+
+    void WebBrowser.warmUpAsync();
+
+    return () => {
+      void WebBrowser.coolDownAsync();
+    };
+  }, []);
+}
+
+type SocialStrategy = "oauth_google" | "oauth_apple";
 
 function getErrorMessage(error: unknown) {
   if (error && typeof error === "object" && "errors" in error) {
@@ -25,13 +48,17 @@ function getErrorMessage(error: unknown) {
 }
 
 export default function SignUpRoute() {
+  useWarmUpBrowser();
+
   const router = useRouter();
   const { isSignedIn } = useAuth();
+  const { startSSOFlow } = useSSO();
   const { signUp, fetchStatus } = useSignUp();
   const [emailAddress, setEmailAddress] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [socialStrategy, setSocialStrategy] = useState<SocialStrategy | null>(null);
 
   const isSubmitting = fetchStatus === "fetching";
   const showCode =
@@ -51,13 +78,13 @@ export default function SignUpRoute() {
       return;
     }
 
-    const url = decorateUrl("/(tabs)/home");
+    const url = decorateUrl(ONBOARDING);
     if (url.startsWith("http")) {
       window.location.href = url;
       return;
     }
 
-    router.push(url as Href);
+    router.replace(url as Href);
   };
 
   const handleCreateAccount = async () => {
@@ -92,6 +119,43 @@ export default function SignUpRoute() {
     ? code.trim().length > 0
     : emailAddress.trim().length > 0 && password.length > 0;
 
+  const handleSocialSignUp = async (strategy: SocialStrategy) => {
+    setSocialStrategy(strategy);
+
+    try {
+      const { createdSessionId, setActive, signIn, signUp: pendingSignUp } = await startSSOFlow({
+        strategy,
+        redirectUrl: AuthSession.makeRedirectUri({
+          scheme: "habitmind",
+          path: "oauth-native-callback",
+        }),
+      });
+
+      if (createdSessionId && setActive) {
+        await setActive({
+          session: createdSessionId,
+          navigate: navigateAfterAuth,
+        });
+        return;
+      }
+
+      if (pendingSignUp?.status === "missing_requirements" || signIn?.status === "needs_identifier") {
+        Alert.alert("Continue sign-up", "Complete the remaining Clerk steps to finish sign-up.");
+        return;
+      }
+
+      Alert.alert("Sign up incomplete", "Clerk needs one more step to finish this sign-up.");
+    } catch (error) {
+      console.error("Social sign-up failed", error);
+      Alert.alert(
+        "Social sign-up unavailable",
+        "This sign-up method needs to be enabled in Clerk Dashboard.",
+      );
+    } finally {
+      setSocialStrategy(null);
+    }
+  };
+
   if (signUp.status === "complete" || isSignedIn) {
     return null;
   }
@@ -108,7 +172,9 @@ export default function SignUpRoute() {
           </Pressable>
 
           <View style={styles.copyBlock}>
-            <Text style={styles.title}>{showCode ? "Verify your email" : "Create your account"}</Text>
+            <Text style={styles.title}>
+              {showCode ? "Verify your email" : "Create your account"}
+            </Text>
             <Text style={styles.subtitle}>
               {showCode
                 ? "Enter the code Clerk sent to your inbox."
@@ -131,6 +197,24 @@ export default function SignUpRoute() {
               </View>
             ) : (
               <>
+                <AuthButton
+                  label="Continue with Google"
+                  iconImage={require("@/assets/icons/google-mark.png")}
+                  variant="secondary"
+                  onPress={() => void handleSocialSignUp("oauth_google")}
+                  disabled={isSubmitting || socialStrategy !== null}
+                />
+
+                <AuthButton
+                  label="Continue with Apple"
+                  iconImage={require("@/assets/icons/apple-mark.png")}
+                  variant="secondary"
+                  onPress={() => void handleSocialSignUp("oauth_apple")}
+                  disabled={isSubmitting || socialStrategy !== null}
+                />
+
+                <DividerWithText text="OR" />
+
                 <View style={styles.fieldGroup}>
                   <Text style={styles.label}>Email address</Text>
                   <TextInput
@@ -172,7 +256,7 @@ export default function SignUpRoute() {
             <Pressable
               style={[styles.primaryButton, (!canSubmit || isSubmitting) && styles.disabledButton]}
               onPress={() => void (showCode ? handleVerify() : handleCreateAccount())}
-              disabled={!canSubmit || isSubmitting}
+              disabled={!canSubmit || isSubmitting || socialStrategy !== null}
             >
               <Text style={styles.primaryButtonText}>{showCode ? "Verify" : "Sign Up"}</Text>
             </Pressable>

@@ -1,136 +1,54 @@
-import { useSSO } from "@clerk/clerk-expo";
-import * as AuthSession from "expo-auth-session";
 import { type Href, useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
-import { useEffect, useState } from "react";
-import { Alert, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 
-import AuthButton from "@/components/ui/AuthButton";
-import DividerWithText from "@/components/ui/DividerWithText";
 import IllustrationCard from "@/components/ui/IllustrationCard";
 import { sereneMeditation } from "@/constants/assets";
 import { colors } from "@/constants/colors";
-import { HOME, SIGN_IN, SIGN_UP } from "@/constants/routes";
-import { useAuthFlowStore } from "@/stores/useAuthFlowStore";
+import { ONBOARDING, SIGN_IN } from "@/constants/routes";
 import { useOnboardingStore } from "@/stores/useOnboardingStore";
 
-WebBrowser.maybeCompleteAuthSession();
-
-const googleIcon = require("@/assets/icons/google-mark.png");
-const appleIcon = require("@/assets/icons/apple-mark.png");
-
-function useWarmUpBrowser() {
-  useEffect(() => {
-    if (Platform.OS !== "android") {
-      return;
-    }
-
-    void WebBrowser.warmUpAsync();
-
-    return () => {
-      void WebBrowser.coolDownAsync();
-    };
-  }, []);
-}
-
 export default function WelcomeRoute() {
-  useWarmUpBrowser();
-
   const router = useRouter();
-  const { startSSOFlow } = useSSO();
-  const { setLastAuthMethod } = useAuthFlowStore();
   const { setHasSeenWelcome } = useOnboardingStore();
-  const [activeProvider, setActiveProvider] = useState<"google" | "apple" | null>(null);
 
-  const startOAuth = async (provider: "google" | "apple") => {
-    const strategy = provider === "google" ? "oauth_google" : "oauth_apple";
-    const providerName = provider === "google" ? "Google" : "Apple";
-
-    setLastAuthMethod(provider);
+  const handleReadyPress = () => {
     setHasSeenWelcome(true);
-    setActiveProvider(provider);
-
-    try {
-      const { createdSessionId, setActive } = await startSSOFlow({
-        strategy,
-        redirectUrl: AuthSession.makeRedirectUri({
-          scheme: "habitmind",
-          path: "welcome",
-        }),
-      });
-
-      if (createdSessionId && setActive) {
-        await setActive({ session: createdSessionId });
-        router.replace(HOME as Href);
-        return;
-      }
-
-      Alert.alert(
-        "Finish setup",
-        `Clerk needs one more step to finish ${providerName} sign-in.`,
-      );
-    } catch (error) {
-      console.log(`${providerName} OAuth error`, error);
-      Alert.alert(
-        `${providerName} sign-in unavailable`,
-        `Please make sure ${providerName} OAuth is enabled in Clerk Dashboard.`,
-      );
-    } finally {
-      setActiveProvider(null);
-    }
+    router.push(ONBOARDING as Href);
   };
 
-  const handleEmailPress = () => {
-    setLastAuthMethod("email");
+  const handleSignInPress = () => {
     setHasSeenWelcome(true);
     router.push(SIGN_IN as Href);
-  };
-
-  const handleSignUpPress = () => {
-    setHasSeenWelcome(true);
-    router.push(SIGN_UP as Href);
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <IllustrationCard source={sereneMeditation} backgroundColor={colors.card} />
-
-        <Text style={styles.title}>Welcome Back!</Text>
-
-        <View style={styles.authSection}>
-          <AuthButton
-            label="Continue with Google"
-            iconImage={googleIcon}
-            variant="primary"
-            onPress={() => void startOAuth("google")}
-            disabled={activeProvider !== null}
+        <View style={styles.topBlock}>
+          <IllustrationCard
+            source={sereneMeditation}
+            variant="circle"
+            size={280}
+            imageScale={1.05}
+            backgroundColor={colors.background}
           />
 
-          <AuthButton
-            label="Continue with Apple"
-            iconImage={appleIcon}
-            variant="secondary"
-            onPress={() => void startOAuth("apple")}
-            disabled={activeProvider !== null}
-          />
-
-          <DividerWithText text="OR" />
-
-          <AuthButton
-            label="Continue with Email"
-            iconText="@"
-            variant="secondary"
-            onPress={handleEmailPress}
-            disabled={activeProvider !== null}
-          />
+          <Text style={styles.title}>Welcome to HabitMind</Text>
+          <Text style={styles.subtitle}>
+            Track your habits, understand your mood, and build routines that actually fit your
+            life.
+          </Text>
         </View>
 
-        <View style={styles.footer}>
-          <View style={styles.footerRow}>
-            <Text style={styles.footerText}>Don&apos;t have an account?</Text>
-            <Pressable onPress={handleSignUpPress}>
-              <Text style={styles.footerLink}> Sign Up</Text>
+        <View style={styles.bottomBlock}>
+          <Pressable style={styles.primaryButton} onPress={handleReadyPress}>
+            <Text style={styles.primaryButtonText}>I&apos;m Ready</Text>
+          </Pressable>
+
+          <View style={styles.signInRow}>
+            <Text style={styles.signInText}>Already have an account?</Text>
+            <Pressable onPress={handleSignInPress} hitSlop={8}>
+              <Text style={styles.signInLink}> Sign In</Text>
             </Pressable>
           </View>
         </View>
@@ -147,35 +65,64 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 32,
-    paddingBottom: 24,
+    paddingTop: 28,
+    paddingBottom: 28,
+    justifyContent: "space-between",
+  },
+  topBlock: {
+    alignItems: "center",
   },
   title: {
     marginTop: 40,
-    marginBottom: 28,
-    textAlign: "center",
-    fontSize: 36,
-    lineHeight: 40,
-    fontWeight: "700",
     color: colors.text,
+    fontSize: 38,
+    lineHeight: 44,
+    fontWeight: "800",
+    textAlign: "center",
   },
-  authSection: {
-    width: "100%",
-  },
-  footer: {
-    marginTop: "auto",
-    alignItems: "center",
-  },
-  footerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  footerText: {
+  subtitle: {
+    marginTop: 14,
     color: colors.mutedText,
+    fontSize: 16,
+    lineHeight: 24,
     textAlign: "center",
   },
-  footerLink: {
+  bottomBlock: {
+    paddingTop: 32,
+  },
+  primaryButton: {
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.black,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 2,
+  },
+  primaryButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  signInRow: {
+    marginTop: 20,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  signInText: {
+    color: colors.mutedText,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  signInLink: {
     color: colors.text,
+    fontSize: 15,
+    lineHeight: 22,
     fontWeight: "800",
   },
 });

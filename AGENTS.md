@@ -24,3 +24,51 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v54.0.0/ before 
 - Do not mutate imported objects or config objects.
 - Avoid reintroducing `Cannot assign to read-only property 'NONE'`.
 - Avoid reintroducing `private properties are not supported`.
+
+## Illustration Background Rules
+
+Add a permanent image/background rule to AGENTS.md.
+
+Problem:
+Some illustration assets have their own off-white PNG background. When they are placed inside a card or screen with a different background color, they look separated, like a pasted square inside the UI.
+
+Permanent rule:
+Whenever using an illustration asset, the UI must make the image background blend with the surrounding container.
+
+Rules:
+1. Always check if the illustration PNG has a visible background.
+2. If the image has a visible off-white/white background, match the parent container background to the image background.
+3. Do not place an illustration inside multiple nested containers with different background colors.
+4. Do not create a square-on-square or rectangle-inside-card look.
+5. Do not use random background colors behind illustrations.
+6. Do not use remote or unapproved images.
+7. Approved illustrations must come from assets/illustrations/.
+8. If an image still looks separated, change the container background, remove the extra wrapper, or use a transparent version of the asset.
+
+Recommended implementation:
+- Use one illustration container only.
+- Container background should usually be "#FAFAF8" or "#FFFFFF", depending on the image.
+- Image style should use:
+  resizeMode: "contain"
+  backgroundColor: "transparent"
+
+For large illustration cards:
+- Avoid adding an inner View around the image.
+- Avoid different background colors between:
+  screen background
+  card background
+  image background
+
+For circular welcome images:
+- Use a circular container only.
+- Do not place a rectangular image card inside the circle.
+
+For auth illustration screens:
+- Email assets should appear integrated into the screen/card.
+- If the PNG has a card-like background already, do not wrap it in another card with a different background.
+
+Before completing any screen with an illustration, visually verify:
+- no visible square image background
+- no mismatched white/off-white rectangle
+- no image floating above the UI
+- image feels like part of the same surface
