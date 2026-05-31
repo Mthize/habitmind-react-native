@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderRadius: 38,
     borderWidth: 1,
-    borderColor: "rgba(227,227,224,0.75)",
+    borderColor: "rgba(0,0,0,0.08)",
     backgroundColor: "rgba(255,255,255,0.18)",
   },
   glassHighlight: {

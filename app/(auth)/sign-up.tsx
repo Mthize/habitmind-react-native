@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   SafeAreaView,
@@ -80,7 +81,16 @@ export default function SignUpRoute() {
 
     const url = decorateUrl(ONBOARDING);
     if (url.startsWith("http")) {
-      window.location.href = url;
+      if (typeof window !== "undefined") {
+        window.location.href = url;
+        return;
+      }
+
+      if (globalThis.navigator?.product === "ReactNative") {
+        void Linking.openURL(url);
+        return;
+      }
+
       return;
     }
 

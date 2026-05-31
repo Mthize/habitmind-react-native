@@ -27,8 +27,6 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v54.0.0/ before 
 
 ## Illustration Background Rules
 
-Add a permanent image/background rule to AGENTS.md.
-
 Problem:
 Some illustration assets have their own off-white PNG background. When they are placed inside a card or screen with a different background color, they look separated, like a pasted square inside the UI.
 
