@@ -1,10 +1,11 @@
-import { useSignIn } from "@clerk/clerk-expo";
+import { useSSO, useSignIn } from "@clerk/clerk-expo";
+import * as AuthSession from "expo-auth-session";
 import { Link, type Href, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
-  Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   SafeAreaView,
@@ -14,6 +15,29 @@ import {
   TextInput,
   View,
 } from "react-native";
+import * as WebBrowser from "expo-web-browser";
+
+import AuthButton from "@/components/ui/AuthButton";
+import DividerWithText from "@/components/ui/DividerWithText";
+import { ONBOARDING } from "@/constants/routes";
+
+WebBrowser.maybeCompleteAuthSession();
+
+function useWarmUpBrowser() {
+  useEffect(() => {
+    if (Platform.OS !== "android") {
+      return;
+    }
+
+    void WebBrowser.warmUpAsync();
+
+    return () => {
+      void WebBrowser.coolDownAsync();
+    };
+  }, []);
+}
+
+type SocialStrategy = "oauth_google" | "oauth_apple";
 
 function getErrorMessage(error: unknown) {
   if (error && typeof error === "object" && "errors" in error) {
@@ -25,12 +49,16 @@ function getErrorMessage(error: unknown) {
 }
 
 export default function SignInRoute() {
+  useWarmUpBrowser();
+
   const router = useRouter();
+  const { startSSOFlow } = useSSO();
   const { signIn, fetchStatus } = useSignIn();
   const [emailAddress, setEmailAddress] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [socialStrategy, setSocialStrategy] = useState<SocialStrategy | null>(null);
 
   const isSubmitting = fetchStatus === "fetching";
 
@@ -46,13 +74,22 @@ export default function SignInRoute() {
       return;
     }
 
-    const url = decorateUrl("/(tabs)/home");
+    const url = decorateUrl(ONBOARDING);
     if (url.startsWith("http")) {
-      window.location.href = url;
+      if (typeof window !== "undefined") {
+        window.location.href = url;
+        return;
+      }
+
+      if (globalThis.navigator?.product === "ReactNative") {
+        void Linking.openURL(url);
+        return;
+      }
+
       return;
     }
 
-    router.push(url as Href);
+    router.replace(url as Href);
   };
 
   const handleSignIn = async () => {
@@ -112,6 +149,43 @@ export default function SignInRoute() {
     signIn.status === "needs_client_trust"
       ? code.trim().length > 0
       : emailAddress.trim().length > 0 && password.length > 0;
+
+  const handleSocialSignIn = async (strategy: SocialStrategy) => {
+    setSocialStrategy(strategy);
+
+    try {
+      const { createdSessionId, setActive, signIn: pendingSignIn, signUp } = await startSSOFlow({
+        strategy,
+        redirectUrl: AuthSession.makeRedirectUri({
+          scheme: "habitmind",
+          path: "oauth-native-callback",
+        }),
+      });
+
+      if (createdSessionId && setActive) {
+        await setActive({
+          session: createdSessionId,
+          navigate: navigateAfterAuth,
+        });
+        return;
+      }
+
+      if (pendingSignIn?.status === "needs_identifier" || signUp?.status === "missing_requirements") {
+        Alert.alert("Continue sign-in", "Complete the remaining Clerk steps to finish sign-in.");
+        return;
+      }
+
+      Alert.alert("Sign in incomplete", "Clerk needs one more step to finish this sign-in.");
+    } catch (error) {
+      console.error("Social sign-in failed", error);
+      Alert.alert(
+        "Social sign-in unavailable",
+        "This sign-up method needs to be enabled in Clerk Dashboard.",
+      );
+    } finally {
+      setSocialStrategy(null);
+    }
+  };
 
   if (signIn.status === "needs_client_trust") {
     return (
@@ -178,6 +252,24 @@ export default function SignInRoute() {
           </View>
 
           <View style={styles.formCard}>
+            <AuthButton
+              label="Continue with Google"
+              iconImage={require("@/assets/icons/google-mark.png")}
+              variant="secondary"
+              onPress={() => void handleSocialSignIn("oauth_google")}
+              disabled={isSubmitting || socialStrategy !== null}
+            />
+
+            <AuthButton
+              label="Continue with Apple"
+              iconImage={require("@/assets/icons/apple-mark.png")}
+              variant="secondary"
+              onPress={() => void handleSocialSignIn("oauth_apple")}
+              disabled={isSubmitting || socialStrategy !== null}
+            />
+
+            <DividerWithText text="OR" />
+
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>Email address</Text>
               <TextInput
@@ -224,7 +316,7 @@ export default function SignInRoute() {
             <Pressable
               style={[styles.primaryButton, (!canSubmit || isSubmitting) && styles.disabledButton]}
               onPress={() => void handleSignIn()}
-              disabled={!canSubmit || isSubmitting}
+              disabled={!canSubmit || isSubmitting || socialStrategy !== null}
             >
               <Text style={styles.primaryButtonText}>Sign In</Text>
             </Pressable>
